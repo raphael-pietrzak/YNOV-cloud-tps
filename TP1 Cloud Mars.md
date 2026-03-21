@@ -50,7 +50,7 @@ gcloud version
 docker version
 ```
 
-![alt text](<Screenshot 2026-03-20 at 12.21.38.png>)
+![alt text](<readme/Screenshot 2026-03-20 at 12.21.38.png>)
 
 ### 2.2 - Configuration
 
@@ -63,7 +63,7 @@ gcloud config set compute/zone europe-west1-b
 gcloud config list
 ```
 
-![alt text](<Screenshot 2026-03-20 at 12.21.56.png>)
+![alt text](<readme/Screenshot 2026-03-20 at 12.21.56.png>)
 
 **Difference region / zone :** une region est un ensemble de zones geographiques, une zone est un datacenter specifique dans une region.
 
@@ -117,7 +117,7 @@ gcloud storage buckets create gs://ynov-tp1-raphael-20032026 \
 gcloud storage buckets list
 ```
 
-![alt text](<Screenshot 2026-03-20 at 12.46.50.png>)
+![alt text](<readme/Screenshot 2026-03-20 at 12.46.50.png>)
 
 **Pourquoi unique ?** Parce que les buckets sont globaux (namespace partagés mondialement).
 
@@ -130,7 +130,7 @@ cat test_tp1_downloaded.txt
 
 ### 3.3 — Métadonnées et permissions
 
-![alt text](<Screenshot 2026-03-20 at 14.28.36.png>)
+![alt text](<readme/Screenshot 2026-03-20 at 14.28.36.png>)
 
 Quel est le storageClass de votre bucket ?
 
@@ -159,7 +159,7 @@ gcloud compute instances create tp1-vm \
 gcloud compute instances list
 ```
 
-![alt text](<Screenshot 2026-03-20 at 16.09.04.png>)
+![alt text](<readme/Screenshot 2026-03-20 at 16.09.04.png>)
 
 **Difference machine-type :**
 - e2-micro : gratuit / faible puissance
@@ -277,4 +277,4 @@ Installation des dependances Python (pip install). Cela telecharge les packages 
 
 ## Préparation TP2
 
-![alt text](<Préparation Cours 2.png>)
+![alt text](<readme/Préparation Cours 2.png>)
