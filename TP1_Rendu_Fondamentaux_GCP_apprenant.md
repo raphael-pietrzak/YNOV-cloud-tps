@@ -1,4 +1,4 @@
-# TP1 - Fondamentaux Cloud & Setup GCP (Corrige)
+# TP1 - Fondamentaux Cloud & Setup GCP (Rendu)
 
 ## Partie 1 - Quiz Fondamentaux Cloud
 
