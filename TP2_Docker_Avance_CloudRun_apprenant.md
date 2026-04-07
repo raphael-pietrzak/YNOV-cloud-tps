@@ -283,30 +283,30 @@ services:
   web:
     build: .
     ports:
-      - "_______:8080" # Mapper le port 8080 local vers le port 8080 du conteneur
+      - "8080:8080" # Mapper le port 8080 local vers le port 8080 du conteneur
     environment:
       - APP_ENV=development
-      - DB_HOST=_______ # Nom du service PostgreSQL (resolution DNS automatique par Docker)
-      - DB_PORT=_______
+      - DB_HOST=db # Nom du service PostgreSQL (resolution DNS automatique par Docker)
+      - DB_PORT=5432
       - DB_NAME=ynov_db
       - DB_USER=ynov
       - DB_PASSWORD=secret_password
     depends_on:
       db:
-        condition: _______ # Attendre que le healthcheck PostgreSQL soit healthy
+        condition: service_healthy # Attendre que le healthcheck PostgreSQL soit healthy
     networks:
-      - _______
+      - app-network
 
   # Service PostgreSQL
   db:
     image: postgres:16-alpine
     environment:
-      - POSTGRES_DB=_______
+      - POSTGRES_DB=ynov_db
       - POSTGRES_USER=ynov
       - POSTGRES_PASSWORD=secret_password
     volumes:
       # Volume nomme pour la persistance des donnees
-      - _______:/var/lib/postgresql/data
+      - db_data:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ynov -d ynov_db"]
       interval: 5s
@@ -317,35 +317,37 @@ services:
 
 # Definition des volumes nommes
 volumes:
-  _______:
+  db_data:
 
 # Definition du reseau dedie
 networks:
   app-network:
-    driver: _______
+    driver: bridge
 ```
 
 **Question :** Pourquoi utilise-t-on `condition: service_healthy` plutot que `condition: service_started` pour `depends_on` ?
 
 Reponse :
 
+Pour pouvoir accepter des connexions, `service_started` ne garantit pas que la base de donnees est prete a recevoir des connexions, ce qui peut causer des erreurs de connexion dans le service web.
+
 ### 2.3 — Lancer et tester la stack
 
 ```bash
 # Demarrer tous les services en arriere-plan
-docker-compose _______
+docker-compose up -d
 
 # Verifier l'etat des services (doivent etre "running" et "healthy")
-docker-compose _______
+docker-compose ps
 
 # Voir les logs en temps reel
-docker-compose logs _______
+docker-compose logs web
 
 # Arreter sans supprimer les volumes (donnees conservees)
-docker-compose _______
+docker-compose stop
 
 # Arreter ET supprimer les volumes (reset complet)
-docker-compose down _______
+docker-compose down -v
 
 # Tester l'application
 curl http://localhost:8080/
@@ -365,12 +367,12 @@ Artifact Registry est le registry prive de GCP. Il remplace Container Registry (
 # --repository-format=docker : type Docker
 # --location : region GCP
 gcloud artifacts repositories create tp2-registry \
-  --repository-format=_______ \
+  --repository-format=docker \
   --location=europe-west9 \
   --description="Registry TP2 YNOV"
 
 # Lister les repositories existants
-gcloud artifacts repositories _______
+gcloud artifacts repositories list --location=europe-west9
 ```
 
 ### 3.2 — Authentifier Docker avec Artifact Registry
@@ -378,7 +380,7 @@ gcloud artifacts repositories _______
 ```bash
 # Configurer Docker pour utiliser gcloud comme credential helper
 # europe-west9-docker.pkg.dev est l'endpoint Artifact Registry pour Paris
-gcloud auth configure-docker _______-docker.pkg.dev
+gcloud auth configure-docker europe-west9-docker.pkg.dev
 
 # Verifier la configuration dans ~/.docker/config.json
 cat ~/.docker/config.json | grep -A3 "credHelpers"
@@ -395,10 +397,10 @@ IMAGE_TAG="europe-west9-docker.pkg.dev/${PROJECT_ID}/tp2-registry/tp2-app:v1"
 echo "Image tag : ${IMAGE_TAG}"
 
 # Tagger l'image locale avec le format Artifact Registry
-docker tag tp2-app:v1 _______
+docker tag tp2-app:v1 ${IMAGE_TAG}
 
 # Pousser l'image
-docker push _______
+docker push ${IMAGE_TAG}
 
 # Verifier que l'image est bien dans le registry
 gcloud artifacts docker images list \
@@ -412,14 +414,23 @@ Cloud Run est le service PaaS serverless de GCP pour les conteneurs. Il scale au
 ### 4.1 — Deployer le service
 
 ```bash
+# Sur Mac M1 :
+docker buildx build \
+  --platform linux/amd64 \
+  -t $IMAGE \
+  --push .
+```
+
+
+```bash
 PROJECT_ID=$(gcloud config get-value project)
 IMAGE="europe-west9-docker.pkg.dev/${PROJECT_ID}/tp2-registry/tp2-app:v1"
 
 gcloud run deploy tp2-service \
-  --image=_______ \
+  --image=${IMAGE} \
   --region=europe-west9 \
   --platform=managed \
-  --_______ # Autoriser les requetes non authentifiees (acces public)
+  --allow-unauthenticated \
   --port=8080 \
   --memory=512Mi \
   --cpu=1 \
@@ -443,31 +454,37 @@ SERVICE_URL=$(gcloud run services describe tp2-service \
 echo "URL du service : ${SERVICE_URL}"
 
 # Tester les endpoints
-curl _______/
-curl _______/health
+curl https://tp2-service-774901146170.europe-west9.run.app/
+curl https://tp2-service-774901146170.europe-west9.run.app/health
+
+# Resultat : 
+# object{2}
+# status: "error"
+# database: "disconnected"
 
 # Verifier les informations du service
-gcloud run services describe tp2-service --region=_______
+gcloud run services describe tp2-service --region=europe-west9
 ```
 
 **Question :** Quelle est la difference entre `--max-instances=3` et `--min-instances=1` dans Cloud Run ?
 
 Reponse :
 
+L'option `--max-instances=3` limite le nombre maximum d'instances que Cloud Run peut creer pour gerer le trafic. Si la demande depasse la capacite de 3 instances, les requetes seront mises en file d'attente ou rejetees. L'option `--min-instances=1` garantit qu'au moins une instance est toujours en cours d'execution, meme en periode d'inactivite. Cela permet de reduire le temps de reponse pour la premiere requete (pas de cold start), mais engendre des couts meme sans trafic.
+
 ### 4.3 — Observer le comportement de scale a zero
 
 ```bash
 # Ne pas envoyer de requetes pendant 5 minutes, puis relancer
 # Cloud Run reduit les instances a 0 apres inactivite (cold start)
-
 # Mesurer le temps de reponse apres inactivite
 time curl ${SERVICE_URL}/health
 
 # Question : Combien de ms pour le premier appel (cold start) ?
-# Reponse :
+# Reponse : 20ms
 
 # Combien de ms pour les appels suivants (warm) ?
-# Reponse :
+# Reponse : 10ms
 ```
 
 ## Partie 5 — Networking GCP : VPC & Firewall (20 min)
@@ -479,13 +496,13 @@ GCP cree un VPC "default" automatiquement. Pour des deploiements professionnels,
 ```bash
 # Creer un VPC en mode custom (pas de sous-reseaux automatiques)
 gcloud compute networks create tp2-vpc \
-  --subnet-mode=_______ # custom ou auto ?
+  --subnet-mode=custom # custom ou auto ?
 
 # Creer un sous-reseau public (pour les services exposes a internet)
 gcloud compute networks subnets create tp2-subnet-public \
   --network=tp2-vpc \
   --region=europe-west9 \
-  --range=_______ # Utiliser le bloc CIDR 10.10.1.0/
+  --range=10.10.1.0/24 # Utiliser le bloc CIDR 10.10.1.0/
 
 # Creer un sous-reseau prive (pour les bases de donnees, non expose)
 gcloud compute networks subnets create tp2-subnet-private \
@@ -498,15 +515,17 @@ gcloud compute networks subnets create tp2-subnet-private \
 
 Reponse :
 
+Cela permet d'appliquer des regles de securite differentes (firewall) entre les sous-reseaux. Par exemple, on peut autoriser le trafic HTTP depuis internet vers le sous-reseau public, mais restreindre l'acces a PostgreSQL uniquement depuis le sous-reseau prive. Cela limite la surface d'attaque en cas de faille de securite dans l'application.
+
 ### 5.2 — Regles de pare-feu (Firewall Rules)
 
 ```bash
 # Regle 1 : Autoriser le trafic HTTP (port 80) depuis internet vers le sous-reseau public
 gcloud compute firewall-rules create tp2-allow-http \
   --network=tp2-vpc \
-  --direction=_______ \
+  --direction=INGRESS \
   --action=ALLOW \
-  --rules=tcp:_______ \
+  --rules=tcp:80 \
   --source-ranges=0.0.0.0/0 \
   --target-tags=http-server
 
@@ -515,7 +534,7 @@ gcloud compute firewall-rules create tp2-allow-https \
   --network=tp2-vpc \
   --direction=INGRESS \
   --action=ALLOW \
-  --rules=tcp:_______ \
+  --rules=tcp:443 \
   --source-ranges=0.0.0.0/0 \
   --target-tags=http-server
 
@@ -525,7 +544,7 @@ gcloud compute firewall-rules create tp2-allow-postgres \
   --direction=INGRESS \
   --action=ALLOW \
   --rules=tcp:5432 \
-  --source-ranges=_______ # Uniquement depuis 10.10.1.0/24 (subnet public)
+  --source-ranges=10.10.1.0/24 # Uniquement depuis 10.10.1.0/24 (subnet public) \
   --target-tags=db-server
 
 # Lister les regles de firewall du VPC
@@ -567,7 +586,7 @@ gcloud storage buckets create gs://${BUCKET} \
 
 # Activer le versioning sur le bucket
 gcloud storage buckets update gs://${BUCKET} \
-  --_______ # Flag pour activer le versioning
+  --versioning # Flag pour activer le versioning
 
 # Verifier
 gcloud storage buckets describe gs://${BUCKET} \
@@ -594,7 +613,7 @@ gcloud storage cp config.json gs://${BUCKET}/
 gcloud storage ls -a gs://${BUCKET}/config.json
 
 # Question : combien de versions voyez-vous ?
-# Reponse :
+# Reponse : 3
 
 # Lire une ancienne version via sa generation (numero affiche dans ls -a)
 # gcloud storage cp "gs://${BUCKET}/config.json#[NUMERO_GENERATION]" ./config_v1.json
@@ -632,7 +651,7 @@ EOF
 
 # Appliquer les regles lifecycle au bucket
 gcloud storage buckets update gs://${BUCKET} \
-  --lifecycle-file=_______
+  --lifecycle-file=lifecycle.json
 
 # Verifier les regles appliquees
 gcloud storage buckets describe gs://${BUCKET} \
@@ -641,11 +660,11 @@ gcloud storage buckets describe gs://${BUCKET} \
 
 **Question :** Expliquez les deux regles lifecycle configurees ci-dessus. Quel est l'interet economique de passer en classe NEARLINE apres 30 jours ?
 
-Regle 1 :
+Regle 1 : Supprime les anciennes versions d'un fichier, en conservant uniquement les 3 dernières versions.
 
-Regle 2 :
+Regle 2 : Change la classe de stockage d'un fichier en NEARLINE après 30 jours.
 
-Interet economique :
+Interet economique : La classe NEARLINE est moins couteuse que la classe STANDARD pour le stockage de fichiers qui sont rarement accedes. En basculant automatiquement les fichiers inactifs vers NEARLINE, on peut reduire les couts de stockage a long terme, tout en conservant les fichiers accessibles en cas de besoin.
 
 ### 6.4 — Nettoyage
 
@@ -673,12 +692,12 @@ gcloud run deploy tp2-service \
   --region=europe-west9 \
   --no-traffic \
   --set-env-vars="APP_ENV=production,APP_VERSION=2.0.0" \
-  --tag=v2 # Tag pour identifier cette revision
+  --tag=v2-canary # Tag pour identifier cette revision
 
 # Lister les revisions
 gcloud run revisions list \
   --service=tp2-service \
-  --region=_______
+  --region=europe-west9
 ```
 
 ### 7.2 — Traffic Splitting (deploiement Canary)
@@ -700,7 +719,7 @@ echo "Canary : ${REV_CANARY}"
 # Diviser le trafic : 80% stable, 20% canary
 gcloud run services update-traffic tp2-service \
   --region=europe-west9 \
-  --to-revisions="${REV_STABLE}=_______,${REV_CANARY}=_______"
+  --to-revisions="${REV_STABLE}=80,${REV_CANARY}=20"
 
 # Verifier la repartition du trafic
 gcloud run services describe tp2-service \
@@ -720,8 +739,8 @@ for i in $(seq 1 10); do
 done
 
 # Question : sur 10 requetes, combien environ ont recu APP_VERSION=2.0.0 ?
-# Resultat observe :
-# Explication mathematique (20% de 10 requetes) :
+# Resultat observe : Je suis censé avoir 2 develop et 8 production, mais c'est aleatoire a chaque execution, normal sur aussi peu de requetes.
+# Explication mathematique (20% de 10 requetes) : 0.2 * 10 = 2 requetes pour la canary, 8 requetes pour la stable.
 ```
 
 ### 7.4 — Basculer 100 % vers la nouvelle revision (promotion)
@@ -742,6 +761,8 @@ gcloud run services describe tp2-service \
 
 Reponse :
 
+Si ça crash ça ne va impacter que 20% des utilisateurs, et on peut rapidement revenir en arrière.
+
 ## Partie 8 — Docker Compose : Ajouter un Cache Redis (20 min)
 
 Les applications cloud utilisent souvent un cache en memoire pour reduire la charge sur la base de donnees et accelerer les reponses.
@@ -753,7 +774,7 @@ Modifiez tp2-app/docker-compose.yml pour ajouter un service Redis :
 ```yaml
 # Ajouter ce service apres "db:"
 cache:
-  image: redis:_______-alpine # Utiliser la version 7
+  image: redis:7-alpine # Utiliser la version 7
   command: redis-server --maxmemory 128mb --maxmemory-policy allkeys-lru
   ports:
     - "6379:6379"
@@ -770,8 +791,8 @@ Ajouter la variable d'environnement Redis dans le service web :
 
 ```yaml
 environment:
-  - REDIS_HOST=_______ # Nom du service cache
-  - REDIS_PORT=_______
+  - REDIS_HOST=cache # Nom du service cache
+  - REDIS_PORT=6379
 ```
 
 Et ajouter la dependance :
@@ -780,7 +801,7 @@ Et ajouter la dependance :
 depends_on:
   db:
     condition: service_healthy
-  _______:
+  cache:
     condition: service_healthy
 ```
 
@@ -811,7 +832,7 @@ app.get('/cached', async (req: Request, res: Response) => {
     if (cached !== null) {
       return res.json({
         total_visits: parseInt(cached, 10),
-        source: _______, // "cache" si lu depuis Redis
+        source: "cache", // "cache" si lu depuis Redis
         ttl_remaining: await redisClient.ttl(CACHE_KEY),
       });
     }
@@ -825,7 +846,7 @@ app.get('/cached', async (req: Request, res: Response) => {
 
     return res.json({
       total_visits: count,
-      source: _______, // "database" si lu depuis PostgreSQL
+      source: "database", // "database" si lu depuis PostgreSQL
     });
   } catch (err) {
     return res.status(500).json({ error: String(err) });
@@ -862,6 +883,9 @@ sleep 11 && curl http://localhost:8080/cached
 **Question :** Dans quelle situation l'utilisation d'un cache Redis peut-elle poser un probleme de coherence des donnees ?
 
 Reponse :
+
+Si les donnees dans la base de donnees changent frequemment, le cache peut retourner des donnees obsoletes (stale) jusqu'a ce que le TTL expire. Cela peut poser un probleme de coherence si l'application a besoin de donnees a jour en temps reel.
+
 
 ## Nettoyage final
 

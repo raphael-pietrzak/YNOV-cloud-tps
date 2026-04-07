@@ -1,0 +1,23 @@
+{
+  "lifecycle": {
+    "rule": [
+      {
+        "action": { "type": "Delete" },
+        "condition": {
+          "numNewerVersions": 3,
+          "isLive": false
+        }
+      },
+      {
+        "action": {
+          "type": "SetStorageClass",
+          "storageClass": "NEARLINE"
+        },
+        "condition": {
+          "age": 30,
+          "isLive": true
+        }
+      }
+    ]
+  }
+}

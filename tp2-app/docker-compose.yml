@@ -12,11 +12,17 @@ services:
       - DB_NAME=ynov_db
       - DB_USER=ynov
       - DB_PASSWORD=secret_password
+      - REDIS_HOST=cache # Nom du service cache
+      - REDIS_PORT=6379
     depends_on:
       db:
         condition: service_healthy # Attendre que le healthcheck PostgreSQL soit healthy
+      cache:
+        condition: service_healthy # Attendre que le healthcheck Redis soit healthy
     networks:
       - app-network
+
+
 
   # Service PostgreSQL
   db:
@@ -33,6 +39,19 @@ services:
       interval: 5s
       timeout: 5s
       retries: 5
+    networks:
+      - app-network
+
+  cache:
+    image: redis:7-alpine # Utiliser la version 7
+    command: redis-server --maxmemory 128mb --maxmemory-policy allkeys-lru
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 3
     networks:
       - app-network
 
