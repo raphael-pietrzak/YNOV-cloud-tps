@@ -1,0 +1,48 @@
+apiVersion: kafka.strimzi.io/v1
+kind: Kafka
+metadata:
+  name: logistream-kafka
+  namespace: logistream
+spec:
+  kafka:
+    version: 3.7.0
+    replicas: 3 # 3 brokers pour la haute disponibilité
+    listeners:
+    # Listener interne (pour les pods dans le cluster Kubernetes)
+    - name: plain
+      port: 9092
+      type: internal
+      tls: false
+    # Listener externe (pour les clients hors du cluster)
+    - name: external
+      port: 9094
+      type: loadbalancer # expose via un Load Balancer GCP
+      tls: false
+    config:
+    # Nombre de partitions par défaut pour les nouveaux topics
+      num.partitions: 3
+    # Facteur de réplication par défaut
+      default.replication.factor: 3
+    # Nombre minimum de réplicas IN-SYNC pour écrire (sécurité)
+      min.insync.replicas: 2
+    # Rétention des messages : 7 jours
+      log.retention.hours: 168
+    # Taille max d'un message GPS : 10 KB (assez pour les coordonnées + métadonnées)
+      message.max.bytes: 10240
+    resources:
+      requests:
+        memory: "1Gi"
+        cpu: "500m"
+      limits:
+        memory: "2Gi"
+        cpu: "1"
+    storage:
+      type: persistent-claim
+      size: 20Gi # 20Gi par broker
+      deleteClaim: true # Supprimer les volumes quand le cluster est supprimé
+  # Mode KRaft : pas de ZooKeeper
+  zookeeper:
+    replicas: 1 # Désactivé (KRaft mode)
+  entityOperator:
+    topicOperator: {} # Gère les KafkaTopic CRD
+    userOperator: {} # Gère les KafkaUser CRD

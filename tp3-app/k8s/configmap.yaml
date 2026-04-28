@@ -1,0 +1,14 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: logistream-config
+  namespace: logistream
+data:
+  # Configuration applicative (non sensible)
+  APP_ENV: "production"
+  LOG_LEVEL: "info"
+  KAFKA_BOOTSTRAP_SERVERS: "kafka-cluster-kafka-bootstrap.logistream.svc.cluster.local:9092"
+  KAFKA_TOPIC_POSITIONS: "truck-positions"
+  KAFKA_TOPIC_ALERTS: "delivery-alerts"
+  GPS_UPDATE_INTERVAL_MS: "10000"
+  MAX_TRUCKS: "1000"

@@ -1,0 +1,13 @@
+{
+  "name": "logistream-gps-producer",
+  "version": "1.0.0",
+  "description": "Simulateur GPS pour la flotte LogiStream",
+  "main": "gps-producer.js",
+  "scripts": {
+    "start": "node gps-producer.js"
+  },
+  "dependencies": {
+    "kafkajs": "^2.2.4"
+  },
+  "engines": { "node": "20" }
+}

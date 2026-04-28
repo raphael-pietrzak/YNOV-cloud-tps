@@ -1,0 +1,55 @@
+# Deployment du GPS Producer (simule la flotte de camions)
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: gps-producer
+  namespace: logistream
+spec:
+  replicas: 1 # 1 seul producer suffit (il simule toute la flotte)
+  selector:
+    matchLabels:
+      app: gps-producer
+  template:
+    metadata:
+      labels:
+        app: gps-producer
+    spec:
+      containers:
+      - name: gps-producer
+        image: europe-west9-docker.pkg.dev/project-30a4ee58-7db6-4e3c-94b/tp2-registry/gps-producer:v1
+        envFrom:
+        - configMapRef:
+            name: logistream-config
+        resources:
+          requests:
+            cpu: "100m"
+            memory: "128Mi"
+---
+# Deployment du Tracker Consumer (traite les positions GPS)
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: tracker-consumer
+  namespace: logistream
+spec:
+  # 3 réplicas = 3 instances dans le même Consumer Group
+  # Kafka distribue les 6 partitions : 2 partitions par instance
+  replicas: 3
+  selector:
+    matchLabels:
+      app: tracker-consumer
+  template:
+    metadata:
+      labels:
+        app: tracker-consumer
+    spec:
+      containers:
+      - name: tracker-consumer
+        image: europe-west9-docker.pkg.dev/project-30a4ee58-7db6-4e3c-94b/tp2-registry/tracker-consumer:v1
+        envFrom:
+        - configMapRef:
+            name: logistream-config
+        resources:
+          requests:
+            cpu: "200m"
+            memory: "256Mi"
