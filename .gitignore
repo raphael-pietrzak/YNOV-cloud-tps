@@ -6,3 +6,7 @@ __pycache__/
 dist/
 .env
 *.env
+.obsidian/
+.github/
+.idea/
+*.log
