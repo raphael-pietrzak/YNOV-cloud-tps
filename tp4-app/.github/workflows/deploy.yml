@@ -1,0 +1,112 @@
+name: FinSecure CI/CD — Secure Deploy
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+env:
+  PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+  REGION: europe-west9
+  REGISTRY: europe-west9-docker.pkg.dev
+  IMAGE_NAME: finsecure-app
+
+permissions:
+  contents: read
+  id-token: write
+  security-events: write
+
+jobs:
+  build-push:
+    name: Build & Push Image
+    runs-on: ubuntu-latest
+    outputs:
+      image-tag: ${{ steps.tag.outputs.image }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Authentification GCP (Workload Identity - sans clé JSON)
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.WIF_PROVIDER }}
+          service_account: finsecure-github-sa@${{ secrets.GCP_PROJECT_ID }}.iam.gserviceaccount.com
+
+      - name: Configurer Docker pour Artifact Registry
+        run: gcloud auth configure-docker ${{ env.REGISTRY }} --quiet
+
+      - id: tag
+        run: echo "image=${{ env.REGISTRY }}/${{ env.PROJECT_ID }}/tp3-app-registry/${{ env.IMAGE_NAME }}:${{ github.sha }}" >> $GITHUB_OUTPUT
+
+      - name: Build & Push
+        run: |
+          docker build -t ${{ steps.tag.outputs.image }} .
+          docker push ${{ steps.tag.outputs.image }}
+
+  security-scan:
+    name: Scan Vulnérabilités
+    runs-on: ubuntu-latest
+    needs: build-push
+    steps:
+      - name: Installer Trivy
+        run: |
+          sudo apt-get install -y wget apt-transport-https gnupg
+          wget -qO - https://aquasecurity.github.io/trivy-repo/deb/public.key | sudo apt-key add -
+          echo "deb https://aquasecurity.github.io/trivy-repo/deb generic main" | sudo tee /etc/apt/sources.list.d/trivy.list
+          sudo apt-get update && sudo apt-get install -y trivy
+
+      - name: Authentification GCP
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.WIF_PROVIDER }}
+          service_account: finsecure-github-sa@${{ secrets.GCP_PROJECT_ID }}.iam.gserviceaccount.com
+
+      - name: Configurer Docker pour Artifact Registry
+        run: gcloud auth configure-docker ${{ env.REGISTRY }} --quiet
+
+      - name: Scan CVE critiques
+        run: |
+          trivy image \
+            --exit-code 1 \
+            --severity "CRITICAL,HIGH" \
+            --ignore-unfixed \
+            --format table \
+            ${{ needs.build-push.outputs.image-tag }}
+
+      - name: Rapport SARIF
+        run: |
+          trivy image \
+            --format sarif \
+            --output trivy-results.sarif \
+            ${{ needs.build-push.outputs.image-tag }}
+
+      - name: Upload SARIF vers GitHub Security
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: trivy-results.sarif
+
+  deploy:
+    name: Deploy GKE
+    runs-on: ubuntu-latest
+    needs: [build-push, security-scan]
+    if: github.ref == 'refs/heads/main'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Authentification GCP
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.WIF_PROVIDER }}
+          service_account: finsecure-github-sa@${{ secrets.GCP_PROJECT_ID }}.iam.gserviceaccount.com
+
+      - name: Configurer kubectl
+        uses: google-github-actions/get-gke-credentials@v2
+        with:
+          cluster_name: tp3-cluster
+          location: ${{ env.REGION }}
+
+      - name: Déployer
+        run: |
+          sed -i "s|IMAGE_PLACEHOLDER|${{ needs.build-push.outputs.image-tag }}|g" k8s/deployment.yaml
+          kubectl apply -f k8s/deployment.yaml
+          kubectl rollout status deployment/finsecure-app
