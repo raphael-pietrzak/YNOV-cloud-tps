@@ -1,0 +1,15 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PodMonitor
+metadata:
+  name: fraudguard-kafka-metrics
+  namespace: fraudguard
+  labels:
+    release: monitoring
+spec:
+  selector:
+    matchLabels:
+      strimzi.io/cluster: fraudguard-kafka
+  podMetricsEndpoints:
+    - path: /metrics
+      port: tcp-prometheus
+      interval: 30s

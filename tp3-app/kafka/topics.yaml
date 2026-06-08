@@ -1,5 +1,5 @@
 # Topic 1 : Positions GPS des camions (flux principal)
-apiVersion: kafka.strimzi.io/v1beta2
+apiVersion: kafka.strimzi.io/v1
 kind: KafkaTopic
 metadata:
   name: truck-positions
@@ -16,7 +16,7 @@ spec:
     cleanup.policy: "delete" # delete (pas de compaction ici, on garde l'historique)
 ---
 # Topic 2 : Alertes de livraison (retards, incidents)
-apiVersion: kafka.strimzi.io/v1beta2
+apiVersion: kafka.strimzi.io/v1
 kind: KafkaTopic
 metadata:
   name: delivery-alerts
@@ -32,7 +32,7 @@ spec:
     cleanup.policy: "delete"
 ---
 # Topic 3 : Événements de livraison (chargement, déchargement, signature)
-apiVersion: kafka.strimzi.io/v1beta2
+apiVersion: kafka.strimzi.io/v1
 kind: KafkaTopic
 metadata:
   name: delivery-events

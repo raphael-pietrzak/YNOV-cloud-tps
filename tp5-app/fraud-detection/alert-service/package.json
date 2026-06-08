@@ -1,0 +1,12 @@
+{
+  "name": "fraudguard-alert-service",
+  "version": "1.0.0",
+  "main": "alert-handler.js",
+  "scripts": {
+    "start": "node alert-handler.js"
+  },
+  "dependencies": {
+    "kafkajs": "^2.2.4",
+    "@google-cloud/firestore": "^7.10.0"
+  }
+}

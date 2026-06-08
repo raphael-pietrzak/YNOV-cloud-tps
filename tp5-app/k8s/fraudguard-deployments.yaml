@@ -1,0 +1,82 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: tx-producer
+  namespace: fraudguard
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: tx-producer
+  template:
+    metadata:
+      labels:
+        app: tx-producer
+    spec:
+      containers:
+        - name: tx-producer
+          image: europe-west9-docker.pkg.dev/[PROJECT_ID]/tp2-registry/fraudguard-producer:v1
+          env:
+            - name: KAFKA_BOOTSTRAP_SERVERS
+              value: "fraudguard-kafka-kafka-bootstrap.fraudguard.svc.cluster.local:9092"
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "128Mi"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: fraud-detector
+  namespace: fraudguard
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: fraud-detector
+  template:
+    metadata:
+      labels:
+        app: fraud-detector
+    spec:
+      containers:
+        - name: fraud-detector
+          image: europe-west9-docker.pkg.dev/[PROJECT_ID]/tp2-registry/fraudguard-streams:v1
+          env:
+            - name: KAFKA_BOOTSTRAP_SERVERS
+              value: "fraudguard-kafka-kafka-bootstrap.fraudguard.svc.cluster.local:9092"
+          resources:
+            requests:
+              cpu: "500m"
+              memory: "512Mi"
+            limits:
+              cpu: "2"
+              memory: "2Gi"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: alert-handler
+  namespace: fraudguard
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: alert-handler
+  template:
+    metadata:
+      labels:
+        app: alert-handler
+    spec:
+      containers:
+        - name: alert-handler
+          image: europe-west9-docker.pkg.dev/[PROJECT_ID]/tp2-registry/fraudguard-alert-service:v1
+          env:
+            - name: KAFKA_BOOTSTRAP_SERVERS
+              value: "fraudguard-kafka-kafka-bootstrap.fraudguard.svc.cluster.local:9092"
+            - name: GCP_PROJECT
+              value: "[PROJECT_ID]"
+          resources:
+            requests:
+              cpu: "200m"
+              memory: "256Mi"
