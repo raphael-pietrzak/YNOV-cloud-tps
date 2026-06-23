@@ -1,0 +1,17 @@
+apiVersion: chaos-mesh.org/v1alpha1
+kind: StressChaos
+metadata:
+  name: cpu-stress-detector
+  namespace: fraudguard
+spec:
+  mode: one
+  selector:
+    namespaces:
+      - fraudguard
+    labelSelectors:
+      app: fraud-detector
+  stressors:
+    cpu:
+      workers: 2
+      load: 95
+  duration: '5m'

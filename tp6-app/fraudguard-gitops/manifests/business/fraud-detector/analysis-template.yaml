@@ -1,0 +1,26 @@
+apiVersion: argoproj.io/v1alpha1
+kind: AnalysisTemplate
+metadata:
+  name: fraud-detector-success-rate
+  namespace: fraudguard
+spec:
+  args:
+    - name: service-name
+      value: fraud-detector-canary
+  metrics:
+    - name: success-rate
+      interval: 30s
+      successCondition: result[0] >= 0.99
+      failureLimit: 3
+      provider:
+        prometheus:
+          address: http://kube-prometheus-stack-prometheus.monitoring:9090
+          query: |
+            sum(rate(fraud_detection_processed_total{
+              status="success",
+              version="canary"
+            }[5m]))
+            /
+            sum(rate(fraud_detection_processed_total{
+              version="canary"
+            }[5m]))

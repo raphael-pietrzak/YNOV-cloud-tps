@@ -1,0 +1,46 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: fraud-detector-stable
+  namespace: fraudguard
+  labels:
+    app: fraud-detector
+    role: stable
+spec:
+  selector:
+    app: fraud-detector
+  ports:
+    - name: metrics
+      port: 9090
+      targetPort: 9090
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: fraud-detector-canary
+  namespace: fraudguard
+  labels:
+    app: fraud-detector
+    role: canary
+spec:
+  selector:
+    app: fraud-detector
+  ports:
+    - name: metrics
+      port: 9090
+      targetPort: 9090
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: fraud-detector
+  namespace: fraudguard
+  labels:
+    release: kube-prometheus-stack
+spec:
+  selector:
+    matchLabels:
+      app: fraud-detector
+  endpoints:
+    - port: metrics
+      interval: 15s

@@ -1,0 +1,46 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: alert-handler
+  namespace: fraudguard
+  labels:
+    app: alert-handler
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: alert-handler
+  template:
+    metadata:
+      labels:
+        app: alert-handler
+    spec:
+      containers:
+        - name: alert-handler
+          image: europe-west9-docker.pkg.dev/fraudguard-prod/tp2-registry/alert-handler:v1
+          env:
+            - name: KAFKA_BOOTSTRAP_SERVERS
+              value: "fraudguard-kafka-kafka-bootstrap.fraudguard.svc.cluster.local:9092"
+            - name: KAFKA_TOPIC
+              value: "fraud-alerts"
+            - name: CONSUMER_GROUP
+              value: "alert-handler-group"
+          resources:
+            requests: { cpu: "100m", memory: "128Mi" }
+            limits:   { cpu: "500m", memory: "512Mi" }
+          ports:
+            - name: metrics
+              containerPort: 9090
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: alert-handler
+  namespace: fraudguard
+spec:
+  selector:
+    app: alert-handler
+  ports:
+    - name: metrics
+      port: 9090
+      targetPort: 9090

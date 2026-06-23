@@ -1,0 +1,19 @@
+apiVersion: chaos-mesh.org/v1alpha1
+kind: Schedule
+metadata:
+  name: kill-fraud-detector
+  namespace: fraudguard
+spec:
+  schedule: '@every 60s'
+  historyLimit: 5
+  concurrencyPolicy: Forbid
+  type: PodChaos
+  podChaos:
+    action: pod-kill
+    mode: one
+    selector:
+      namespaces:
+        - fraudguard
+      labelSelectors:
+        app: fraud-detector
+    duration: '10s'

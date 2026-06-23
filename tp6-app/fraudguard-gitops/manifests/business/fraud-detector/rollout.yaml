@@ -1,0 +1,61 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Rollout
+metadata:
+  name: fraud-detector
+  namespace: fraudguard
+  labels:
+    app: fraud-detector
+spec:
+  replicas: 4
+  strategy:
+    canary:
+      stableService: fraud-detector-stable
+      canaryService: fraud-detector-canary
+      steps:
+        - setWeight: 20
+        - pause: { duration: 2m }
+        - analysis:
+            templates:
+              - templateName: fraud-detector-success-rate
+        - setWeight: 40
+        - pause: { duration: 2m }
+        - analysis:
+            templates:
+              - templateName: fraud-detector-success-rate
+        - setWeight: 80
+        - pause: { duration: 1m }
+        - setWeight: 100
+  selector:
+    matchLabels:
+      app: fraud-detector
+  template:
+    metadata:
+      labels:
+        app: fraud-detector
+    spec:
+      containers:
+        - name: fraud-detector
+          image: europe-west9-docker.pkg.dev/fraudguard-prod/tp2-registry/fraudguard-streams:v2
+          env:
+            - name: KAFKA_BOOTSTRAP_SERVERS
+              value: "fraudguard-kafka-kafka-bootstrap.fraudguard.svc.cluster.local:9092"
+            - name: APP_VERSION
+              value: "v2"
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: "http://tempo.monitoring.svc.cluster.local:4317"
+            - name: ENV
+              value: "production"
+          ports:
+            - name: metrics
+              containerPort: 9090
+          resources:
+            requests: { cpu: "500m", memory: "512Mi" }
+            limits:   { cpu: "2",    memory: "2Gi" }
+          readinessProbe:
+            httpGet: { path: /healthz, port: 9090 }
+            initialDelaySeconds: 10
+            periodSeconds: 5
+          livenessProbe:
+            httpGet: { path: /healthz, port: 9090 }
+            initialDelaySeconds: 30
+            periodSeconds: 10

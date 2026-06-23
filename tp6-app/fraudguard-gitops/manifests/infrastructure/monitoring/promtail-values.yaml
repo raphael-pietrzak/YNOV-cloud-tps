@@ -1,0 +1,18 @@
+config:
+  clients:
+    - url: http://loki.monitoring.svc.cluster.local:3100/loki/api/v1/push
+  snippets:
+    pipelineStages:
+      - cri: {}
+      - json:
+          expressions:
+            level: level
+            trace_id: trace_id
+            request_id: request_id
+            alert_type: alert_type
+            processing_latency_ms: processing_latency_ms
+      - labels:
+          level:
+
+serviceMonitor:
+  enabled: true

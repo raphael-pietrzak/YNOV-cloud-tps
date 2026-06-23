@@ -1,0 +1,83 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: fraudguard-slo-rules
+  namespace: monitoring
+  labels:
+    release: kube-prometheus-stack
+spec:
+  groups:
+    - name: fraudguard.slo
+      interval: 30s
+      rules:
+        # Taux de succès du fraud-detector sur 5 minutes
+        - record: fraudguard:detector_success_rate:5m
+          expr: |
+            sum(rate(kafka_consumer_records_consumed_total{
+              consumer_group="fraud-detection-group"
+            }[5m]))
+            /
+            sum(rate(kafka_consumer_records_total{
+              consumer_group="fraud-detection-group"
+            }[5m]))
+
+        # Error Budget restant sur 30 jours
+        # SLO du fraud-detector : 99.5% => (1 - 0.995) = 0.005
+        - record: fraudguard:detector_error_budget_remaining:30d
+          expr: |
+            1 - (
+              (1 - avg_over_time(fraudguard:detector_success_rate:5m[30d]))
+              /
+              (1 - 0.995)
+            )
+
+        # Burn rate court (1h) : combien de fois plus vite que la consommation nominale
+        - record: fraudguard:detector_burn_rate:1h
+          expr: |
+            (1 - avg_over_time(fraudguard:detector_success_rate:5m[1h]))
+            /
+            (1 - 0.995)
+
+        # Burn rate long (6h)
+        - record: fraudguard:detector_burn_rate:6h
+          expr: |
+            (1 - avg_over_time(fraudguard:detector_success_rate:5m[6h]))
+            /
+            (1 - 0.995)
+
+    - name: fraudguard.alerts
+      rules:
+        - alert: ErrorBudgetCritical
+          expr: fraudguard:detector_error_budget_remaining:30d < 0.20
+          for: 5m
+          labels:
+            severity: critical
+            team: sre
+          annotations:
+            summary: "Error Budget fraud-detector < 20% — Feature Freeze recommandé"
+            runbook: "https://runbooks.fraudguard.fr/error-budget"
+
+        - alert: BurnRateFastBurn
+          expr: |
+            fraudguard:detector_burn_rate:1h > 14.4
+            and
+            fraudguard:detector_burn_rate:6h > 6
+          for: 2m
+          labels:
+            severity: critical
+            team: sre
+          annotations:
+            summary: "Burn rate > 14.4x — budget brûlé en moins d'1 jour"
+            runbook: "https://runbooks.fraudguard.fr/burn-rate"
+
+        - alert: FraudDetectorLatencyP99
+          expr: |
+            histogram_quantile(0.99,
+              sum by (le) (rate(fraud_detection_duration_seconds_bucket[5m]))
+            ) > 0.5
+          for: 10m
+          labels:
+            severity: warning
+            team: sre
+          annotations:
+            summary: "Latence P99 fraud-detector > 500ms (SLO violé)"
